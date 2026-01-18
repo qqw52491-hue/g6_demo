@@ -1,9 +1,9 @@
 <script setup>
-import G6Demo from './components/G6Demo.vue'
+import HelloWorld from './components/HelloWorld.vue'
 </script>
 
 <template>
-  <G6Demo />
+  <HelloWorld />
 </template>
 
 <style>

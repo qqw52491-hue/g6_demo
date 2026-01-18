@@ -14,6 +14,10 @@ export const LAYERS = {
 // 1. layer: 决定覆盖层级
 // 2. style: 决定视觉样式 (作为全图默认值)
 export const THEME = {
+    dimmed: {
+        layer: 10,
+        style: { opacity: 0.2, fill: '#E5E7EB', stroke: '#E5E7EB', shadowBlur: 0 }
+    },
     hidden: {
         layer: LAYERS.TOP_MOST,
         style: { opacity: 0, stroke: 'transparent' } // 完全隐藏
@@ -31,23 +35,23 @@ export const THEME = {
     },
     highlight: {
         layer: LAYERS.HIGHLIGHT,
-        style: { stroke: '#00D1FF', lineWidth: 4, shadowColor: '#00D1FF', shadowBlur: 10 }
+        style: { stroke: '#00D1FF', lineWidth: 4, shadowColor: '#00D1FF', shadowBlur: 10, opacity: 1 }
     },
     highlight_source: {
         layer: LAYERS.HIGHLIGHT + 5,
-        style: { fill: '#10B981', stroke: '#059669', lineWidth: 6, shadowColor: '#10B981', shadowBlur: 20 }
+        style: { fill: '#10B981', stroke: '#059669', lineWidth: 6, shadowColor: '#10B981', shadowBlur: 20, opacity: 1 }
     },
     highlight_target: {
         layer: LAYERS.HIGHLIGHT + 5,
-        style: { fill: '#F59E0B', stroke: '#D97706', lineWidth: 6, shadowColor: '#F59E0B', shadowBlur: 20 }
+        style: { fill: '#F59E0B', stroke: '#D97706', lineWidth: 6, shadowColor: '#F59E0B', shadowBlur: 20, opacity: 1 }
     },
     path_active: {
         layer: LAYERS.HIGHLIGHT - 5,
-        style: { stroke: '#EC4899', lineWidth: 4, shadowColor: '#EC4899', shadowBlur: 10 }
+        style: { stroke: '#EC4899', lineWidth: 4, shadowColor: '#EC4899', shadowBlur: 10, opacity: 1 }
     },
     selected: {
         layer: LAYERS.SELECTION,
-        style: { stroke: '#00D1FF', lineWidth: 4, shadowColor: '#00D1FF', shadowBlur: 10 }
+        style: { stroke: '#00D1FF', lineWidth: 4, shadowColor: '#00D1FF', shadowBlur: 10, opacity: 1 }
     },
     related: {
         layer: LAYERS.DECORATION,
@@ -89,11 +93,13 @@ export const BLEND_MODES = {
     height: (prev, curr) => Math.max(prev, curr),      // 高
     lineWidth: (prev, curr) => Math.max(prev, curr),   // 边框粗细
 
-    // 2. 透明度/可见性 -> 乘法 (Multiply)
-    // 任何一个状态想让它变淡，它就必须变淡。0 * N = 0 (彻底隐藏)
-    opacity: (prev, curr) => prev * curr,
-    fillOpacity: (prev, curr) => prev * curr,
-    strokeOpacity: (prev, curr) => prev * curr,
+    // 2. 透明度/可见性
+    // "智能混合" (Smart Blend)
+    // 1. 如果当前状态显式要求 1.0 (不透明)，视为"高亮/重置"意图，直接强制变亮 (解决 Spotlight 问题)
+    // 2. 否则，视为"过滤/遮罩"意图，进行乘法叠加 (解决 Overlay 叠加问题)
+    opacity: (prev, curr) => curr === 1 ? 1 : prev * curr,
+    fillOpacity: (prev, curr) => curr === 1 ? 1 : prev * curr,
+    strokeOpacity: (prev, curr) => curr === 1 ? 1 : prev * curr,
 
     // 3. 阴影/发光效果 -> 累加 (Sum)
     // 多个状态叠加时，光晕应该更强
@@ -112,4 +118,5 @@ export const BLEND_MODES = {
     // lineDash (虚线样式)
     // cursor (鼠标手势)
     // fontFamily / fontSize (字体)
+    // opacity (透明度) - 现在也归此类
 };
