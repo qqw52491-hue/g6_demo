@@ -57,6 +57,22 @@ export const THEME = {
         layer: LAYERS.DECORATION,
         style: { stroke: '#A855F7', lineWidth: 4, lineDash: [5, 5] }
     },
+    // --- 测试用状态 (同级叠加实验) ---
+    // Layer 均为 50，测试 "后盖前" 的时序逻辑
+    // 关键：必须加 opacity: 1 以防止被全局 dimmed (0.2) 压暗
+    test_red: {
+        layer: 50,
+        style: { fill: '#FF0000', stroke: '#880000', lineWidth: 3, opacity: 1 }
+    },
+    test_green: {
+        layer: 50,
+        style: { fill: '#00FF00', stroke: '#008800', lineWidth: 3, opacity: 1 }
+    },
+    test_blue: {
+        layer: 50,
+        style: { fill: '#0000FF', stroke: '#000088', lineWidth: 3, opacity: 1 }
+    },
+
     hover: {
         layer: LAYERS.DECORATION - 5,
         style: { stroke: '#999', cursor: 'pointer' }

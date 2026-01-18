@@ -4,6 +4,7 @@ import G6 from '@antv/g6';
 import { registerCustomNode } from '../graph/registerNode';
 import { StateManager } from '../graph/StateManager';
 import { AnimationSequencer } from '../graph/AnimationSequencer';
+import { GLOBAL_STATE_STYLES } from '../graph/constants'; // <--- 关键引入
 
 defineProps({
   msg: String,
@@ -46,11 +47,13 @@ onMounted(() => {
             default: ['drag-canvas', 'zoom-canvas', 'drag-node'],
         },
         defaultNode: {
-            type: 'priority-node', // <--- 关键：使用支持状态优先级的节点
+            type: 'priority-node', 
             size: 50,
+            stateStyles: GLOBAL_STATE_STYLES, // <--- 关键：注入系统样式表！
         },
         defaultEdge: {
-            type: 'priority-edge', // <--- 关键：使用支持状态优先级的边
+            type: 'priority-edge', 
+            stateStyles: GLOBAL_STATE_STYLES, // <--- 关键：Edge 也要注入
             style: {
                 stroke: '#e2e2e2',
                 lineWidth: 2,
@@ -124,12 +127,42 @@ const demoError = () => {
     refreshAll();
 };
 
+// --- 同级叠加实验 ---
+// 针对 node-0 进行 R/G/B 的开关操作
+const toggleState = (color, isActive) => {
+    console.log(`[Vue] Toggle ${color}: ${isActive}`);
+
+    if (!stateManager.value) {
+        console.error('[Vue] StateManager not initialized!');
+        return;
+    }
+
+    const reason = 'manual_stack_test';
+    const stateName = `test_${color}`; // test_red, test_green, test_blue
+    
+    if (isActive) {
+        stateManager.value.addReason('node-0', stateName, reason);
+    } else {
+        stateManager.value.removeReason('node-0', stateName, reason);
+    }
+    
+    // Check if reason was added
+    const active = stateManager.value.getActiveStates('node-0');
+    console.log('[Vue] Node-0 Active States:', active);
+
+    refreshAll();
+};
+
 const reset = () => {
+    console.log('[Vue] Reset');
     stateManager.value.clearAll();
     refreshAll();
 };
 
 const refreshAll = () => {
+    console.log('[Vue] Refreshing Graph...');
+    if (!graphInstance.value) return;
+
     const ids = [
         ...graphInstance.value.getNodes().map(n => n.getID()),
         ...graphInstance.value.getEdges().map(e => e.getID())
@@ -147,6 +180,30 @@ const refreshAll = () => {
         <button @click="demoPathTrace">🌊 路径流光 (Trace)</button>
         <button @click="demoError">🚨 错误覆盖 (Error)</button>
     </div>
+    
+    <!-- 新增：同级叠加测试区 -->
+    <div class="stack-test-panel">
+        <h4>🎨 同级叠加测试 (Layer: 50) - 操作对象: Node 0</h4>
+        <div class="color-controls">
+            <div class="control-group">
+                <span style="color:red">RED:</span>
+                <button @click="toggleState('red', true)">+ 加红</button>
+                <button @click="toggleState('red', false)">- 删红</button>
+            </div>
+            <div class="control-group">
+                <span style="color:green">GREEN:</span>
+                <button @click="toggleState('green', true)">+ 加绿</button>
+                <button @click="toggleState('green', false)">- 删绿</button>
+            </div>
+            <div class="control-group">
+                <span style="color:blue">BLUE:</span>
+                <button @click="toggleState('blue', true)">+ 加蓝</button>
+                <button @click="toggleState('blue', false)">- 删蓝</button>
+            </div>
+        </div>
+        <p class="hint">规则：同级状态下，JS对象遍历顺序通常遵循添加顺序。后加的属性会覆盖前面的。</p>
+    </div>
+
     <div ref="graphContainer" class="canvas-wrapper"></div>
   </div>
 </template>
@@ -158,6 +215,19 @@ const refreshAll = () => {
     flex-direction: column;
     align-items: center;
 }
+
+.stack-test-panel {
+    border: 1px dashed #666;
+    padding: 10px;
+    margin-bottom: 20px;
+    border-radius: 6px;
+    background: #f9f9f9;
+    color: #333;
+}
+.stack-test-panel h4 { margin-top: 0; }
+.color-controls { display: flex; gap: 20px; }
+.control-group { display: flex; gap: 5px; align-items: center; }
+.hint { font-size: 12px; color: #666; margin-bottom: 0; }
 
 .toolbar {
     margin-bottom: 20px;

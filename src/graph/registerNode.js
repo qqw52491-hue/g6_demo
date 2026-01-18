@@ -1,12 +1,53 @@
 import G6 from '@antv/g6';
 import { resolveStyle } from './StyleResolver';
 
+/**
+ * 核心样式应用函数
+ * @param {Object} model - 节点/边的数据模型 (全量数据)
+ * @param {Object} group - 图形分组 Group
+ */
+function applyVisuals(model, group) {
+    if (!model || !group) return;
+
+    // 1. 找到关键图形 (KeyShape)
+    const keyShape = group.find(element => element.get('name') === 'key-shape');
+    if (!keyShape) {
+        // console.warn('registerNode: key-shape not found for', model.id);
+        return;
+    }
+
+    // 2. 提取样式配置
+    const defaultStyle = model.defaultStyle || { fill: '#C6E5FF', stroke: '#5B8FF9', lineWidth: 1 }; // 恢复默认蓝色
+    const stateStyles = model.stateStyles || {};
+    const activeStates = model.activeStates || [];
+
+    // 3. 计算最终样式
+    // resolveStyle 会处理优先级、混合模式等复杂逻辑
+    const finalStyle = resolveStyle(defaultStyle, stateStyles, activeStates);
+
+    // 4. 立即生效 (Attributes Update)
+    // 使用 attr 而非 animate，以确保高性能和位置同步
+    keyShape.attr(finalStyle);
+
+    // 5. 特殊处理：如果有 Label，也要同步更新样式 (可选)
+    const labelShape = group.find(element => element.get('name') === 'center-label');
+    if (labelShape && finalStyle.labelCfg && finalStyle.labelCfg.style) {
+        labelShape.attr(finalStyle.labelCfg.style);
+    }
+
+    // Debug Log: Uncomment to verify updates
+    // if (activeStates.length > 0) {
+    //    console.log(`[Update] ${model.id} states:`, activeStates, 'style:', finalStyle);
+    // }
+}
+
 export function registerCustomNode() {
+    // --- 1. 注册 Priority Node ---
     G6.registerNode('priority-node', {
-        // 自定义 draw: 绘制我们的圆形和标签
+        // 自定义 draw: 负责创建图形结构 (几何)
         draw(cfg, group) {
-            // 基础圆形
             const r = cfg.size ? (Array.isArray(cfg.size) ? cfg.size[0] / 2 : cfg.size / 2) : 20;
+            // 初始样式，虽然会被 applyVisuals 覆盖，但设一个初始值是好习惯
             const style = { ...cfg.defaultStyle, ...cfg.style };
 
             const keyShape = group.addShape('circle', {
@@ -14,13 +55,12 @@ export function registerCustomNode() {
                     x: 0,
                     y: 0,
                     r: r,
-                    ...style
+                    ...style // 基础几何样式
                 },
                 name: 'key-shape',
                 draggable: true,
             });
 
-            // 标签 (可选)
             if (cfg.label) {
                 group.addShape('text', {
                     attrs: {
@@ -29,8 +69,7 @@ export function registerCustomNode() {
                         textAlign: 'center',
                         textBaseline: 'middle',
                         text: cfg.label,
-                        // 默认黑色，后续通过 StateManager 覆盖
-                        fill: (cfg.labelCfg && cfg.labelCfg.style && cfg.labelCfg.style.fill) || '#000',
+                        fill: '#000',
                         fontSize: 12,
                     },
                     name: 'center-label',
@@ -41,56 +80,41 @@ export function registerCustomNode() {
             return keyShape;
         },
 
-        // 关键修改：不再覆盖 update！
-        // 使用 afterUpdate 在父类完成位置更新后，应用我们的样式状态。
+        // Hook: 绘制完成后立即应用“状态样式”
+        afterDraw(cfg, group) {
+            // 在 draw 阶段，cfg 就是全量数据
+            applyVisuals(cfg, group);
+        },
+
+        // Hook: 更新完成后立即重算“状态样式”
+        // 注意：位置更新(x,y) 已经由父类完成
         afterUpdate(cfg, item) {
             const group = item.getContainer();
-            const keyShape = group.find(element => element.get('name') === 'key-shape');
-
-            if (!keyShape) return;
-
-            // 1. 解析样式
-            const defaultStyle = cfg.defaultStyle || { fill: '#C6E5FF', stroke: '#5B8FF9', lineWidth: 1 };
-            const stateStyles = cfg.stateStyles || {};
-            const activeStates = cfg.activeStates || [];
-
-            const finalStyle = resolveStyle(defaultStyle, stateStyles, activeStates);
-
-            // 2. 应用样式
-            // 在 Force 布局中，推荐使用 attr 而非 animate，以保持高性能和同步
-            keyShape.attr(finalStyle);
-
-            // 3. 更新 Label 样式
-            const labelShape = group.find(element => element.get('name') === 'center-label');
-            if (labelShape && finalStyle.labelCfg && finalStyle.labelCfg.style) {
-                labelShape.attr(finalStyle.labelCfg.style);
-            }
+            // 在 update 阶段，必须从 item.getModel() 拿全量数据，cfg 可能是增量
+            const model = item.getModel();
+            applyVisuals(model, group);
         }
-    }, 'single-node'); // 继承 single-node，复用其交互和位置逻辑
+    }, 'single-node'); // 继承 single-node
 
-    // --- 注册 Priority Edge ---
+    // --- 2. 注册 Priority Edge ---
     G6.registerEdge('priority-edge', {
-        // 关键修改：Edge 完全继承 'line' 的 draw 和 update
-        // 我们只在 afterUpdate 里“染色”
+        // 这里的策略是：完全不写 draw 和 update
+        // 全部交给父类 'line' 去处理 Path 计算和连线逻辑
 
+        // Hook: 绘制完成后
+        afterDraw(cfg, group) {
+            // 给 Edge 一个也是可以看见的默认色，防止初始化在黑底上隐身
+            if (!cfg.defaultStyle) cfg.defaultStyle = { stroke: '#999', lineWidth: 2 };
+            applyVisuals(cfg, group);
+        },
+
+        // Hook: 更新完成后
         afterUpdate(cfg, item) {
+            const model = item.getModel();
+            if (!model.defaultStyle) model.defaultStyle = { stroke: '#999', lineWidth: 2 };
+
             const group = item.getContainer();
-            // line 类型的 keyShape 名字通常叫 'key-shape' (G6 约定)
-            const keyShape = group.find(element => element.get('name') === 'key-shape');
-
-            if (!keyShape) return;
-
-            // 注意：此时 G6 父类已经帮我们把线连好了 (Path 计算完毕)
-            // 我们只需要负责颜色、粗细等样式
-
-            const defaultStyle = cfg.defaultStyle || { stroke: '#e2e2e2', lineWidth: 2 };
-            const stateStyles = cfg.stateStyles || {};
-            const activeStates = cfg.activeStates || [];
-
-            const finalStyle = resolveStyle(defaultStyle, stateStyles, activeStates);
-
-            // 立即应用样式
-            keyShape.attr(finalStyle);
+            applyVisuals(model, group);
         }
-    }, 'line'); // 继承 line，复用 Path 计算逻辑
+    }, 'line'); // 继承 line
 }
