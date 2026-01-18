@@ -92,14 +92,29 @@ export class AnimationSequencer {
     refreshGraph(nodeIds) {
         if (!this.graph || !nodeIds) return;
 
-        // 关闭自动重绘以提升批量性能
         this.graph.setAutoPaint(false);
+
+        // 1. 获取动态定义的状态 (运行时添加的 layer/style)
+        const dynamicStyles = this.stateManager.getDynamicDefinitions();
 
         nodeIds.forEach(id => {
             const item = this.graph.findById(id);
             if (item) {
-                const states = this.stateManager.getActiveStates(id);
-                this.graph.updateItem(item, { activeStates: states });
+                const activeStates = this.stateManager.getActiveStates(id);
+                const model = item.getModel();
+
+                // 2. 合并样式表：全局/原有样式 + 动态样式
+                // 注意：这里我们做浅合并。如果 dynamicStyles 很大，可能需要优化。
+                // 但通常动态样式不会太多。
+                const mergedStateStyles = {
+                    ...model.stateStyles,
+                    ...dynamicStyles
+                };
+
+                this.graph.updateItem(item, {
+                    activeStates: activeStates,
+                    stateStyles: mergedStateStyles // <--- 注入合并后的样式表
+                });
             }
         });
 

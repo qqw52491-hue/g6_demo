@@ -74,9 +74,38 @@ onMounted(() => {
     // 3. 初始化状态管理系统
     stateManager.value = new StateManager();
     sequencer.value = new AnimationSequencer(graph, stateManager.value);
+    // 3. 演示：提前预设业务状态 (Pre-set Business States)
+    // 模拟：在应用初始化时加载了一套“皮肤配置”
+    stateManager.value.registerState('boss_mode', {
+        layer: 99, 
+        style: {
+            fill: 'url(#gradient-gold)', // 甚至支持渐变（需要 G6 定义 defs，这里先用纯色替代）
+            fill: '#F59E0B', 
+            stroke: '#78350F',
+            lineWidth: 8,
+            shadowColor: '#F59E0B',
+            shadowBlur: 30,
+            opacity: 1,
+            labelCfg: { style: { fill: '#78350F', fontSize: 14, fontWeight: '800' } }
+        }
+    });
 });
 
 // --- Actions ---
+
+const demoBoss = () => {
+    // 演示：使用预设的 'boss_mode'
+    // 此时不需要再传样式配置，直接用名字即可！
+    const isBoss = stateManager.value.getActiveStates('node-3').includes('boss_mode');
+    
+    // 只需一行代码，样式自动应用
+    if (!isBoss) {
+        stateManager.value.addReason('node-3', 'boss_mode', 'user_promote');
+    } else {
+        stateManager.value.removeReason('node-3', 'boss_mode', 'user_promote');
+    }
+    refreshAll();
+};
 
 const demoSpotlight = () => {
     // 演示：聚光灯模式 (Spotlight)
@@ -113,23 +142,24 @@ const demoPathTrace = async () => {
 
 const demoError = () => {
     // 演示：层级覆盖 (Error > Selected)
-    const reason = 'demo_error';
-    
-    // 先选中 Node-2
-    stateManager.value.addReason('node-2', 'selected', reason);
-    
-    // 0.5秒后，系统报错 (Should turn Red)
-    setTimeout(() => {
-        stateManager.value.addReason('node-2', 'critical', reason);
-        refreshAll();
-    }, 500);
-    
+    // 演示：业务层定义“错误状态”，不再依赖 constants.js
+    // 这样 constants.js 只需定义 LAYERS 常量即可
+    stateManager.value.addReason('node-4', 'critical', 'demo_error', {
+        layer: 90, // 或使用 LAYERS.TOP_MOST - 10
+        style: {
+            fill: '#EF4444', 
+            stroke: '#7F1D1D', 
+            shadowColor: '#EF4444', 
+            shadowBlur: 15,
+            labelCfg: { style: { fill: '#fff', fontWeight: 'bold' } }
+        }
+    });
     refreshAll();
 };
 
 // --- 同级叠加实验 ---
 // 针对 node-0 进行 R/G/B 的开关操作
-const toggleState = (color, isActive) => {
+const toggleState = (color, isActive, customConfig = null) => {
     console.log(`[Vue] Toggle ${color}: ${isActive}`);
 
     if (!stateManager.value) {
@@ -138,10 +168,11 @@ const toggleState = (color, isActive) => {
     }
 
     const reason = 'manual_stack_test';
-    const stateName = `test_${color}`; // test_red, test_green, test_blue
+    const stateName = `test_${color}`; 
     
     if (isActive) {
-        stateManager.value.addReason('node-0', stateName, reason);
+        // 支持传入动态配置 (layer, style)
+        stateManager.value.addReason('node-0', stateName, reason, customConfig);
     } else {
         stateManager.value.removeReason('node-0', stateName, reason);
     }
@@ -151,6 +182,24 @@ const toggleState = (color, isActive) => {
     console.log('[Vue] Node-0 Active States:', active);
 
     refreshAll();
+};
+
+const demoCustom = () => {
+    // 演示：完全不需要在 constants.js 定义
+    // 直接在这里定义样式和优先级！
+    const isPurple = stateManager.value.getActiveStates('node-0').includes('test_custom_purple');
+    
+    toggleState('custom_purple', !isPurple, {
+        layer: 100, // 优先级极高，甚至盖过 Error (90)
+        style: { 
+            fill: '#8B5CF6', // 紫色
+            stroke: '#FBBF24', // 金边 
+            lineWidth: 5,
+            opacity: 1, // 同样穿透聚光灯
+            shadowBlur: 20,
+            shadowColor: '#8B5CF6'
+        }
+    });
 };
 
 const reset = () => {
@@ -199,6 +248,14 @@ const refreshAll = () => {
                 <span style="color:blue">BLUE:</span>
                 <button @click="toggleState('blue', true)">+ 加蓝</button>
                 <button @click="toggleState('blue', false)">- 删蓝</button>
+            </div>
+            <div class="control-group" style="padding-left: 20px; border-left: 1px solid #ddd;">
+                <span style="color:#8B5CF6; font-weight:bold;">CUSTOM:</span>
+                <button @click="demoCustom">🔮 动态定义 (Layer 100)</button>
+            </div>
+            <div class="control-group" style="padding-left: 20px; border-left: 1px solid #ddd;">
+                <span style="color:#F59E0B; font-weight:bold;">BOSS:</span>
+                <button @click="demoBoss">👑 预设模式 (node-3)</button>
             </div>
         </div>
         <p class="hint">规则：同级状态下，JS对象遍历顺序通常遵循添加顺序。后加的属性会覆盖前面的。</p>

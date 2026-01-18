@@ -10,29 +10,23 @@ export const LAYERS = {
 };
 
 // --- 全局主题配置 (Global Theme Configuration) ---
-// 每一项包含了：
-// 1. layer: 决定覆盖层级
-// 2. style: 决定视觉样式 (作为全图默认值)
+// 这里的配置是为了向下兼容 (Backward Compatibility)
+// 推荐做法：在业务层使用 StateManager 动态注册样式
 export const THEME = {
+    // --- 遗留的系统预设 (Legacy Presets) ---
+    // 为了保证现有 Demo 正常运行暂时保留，
+    // 最终目标是将这些全部移入业务代码或者独立的 Theme.js 文件
+
     dimmed: {
         layer: 10,
         style: { opacity: 0.2, fill: '#E5E7EB', stroke: '#E5E7EB', shadowBlur: 0 }
     },
     hidden: {
         layer: LAYERS.TOP_MOST,
-        style: { opacity: 0, stroke: 'transparent' } // 完全隐藏
+        style: { opacity: 0, stroke: 'transparent' }
     },
-    critical: {
-        layer: LAYERS.TOP_MOST - 10,
-        style: {
-            fill: '#EF4444', stroke: '#7F1D1D', shadowColor: '#EF4444', shadowBlur: 15,
-            labelCfg: { style: { fill: '#fff', fontWeight: 'bold' } }
-        }
-    },
-    disabled: {
-        layer: LAYERS.INTERACTION,
-        style: { opacity: 0.3, fill: '#555', cursor: 'not-allowed' }
-    },
+    // critical: 已移除，由业务层动态定义
+
     highlight: {
         layer: LAYERS.HIGHLIGHT,
         style: { stroke: '#00D1FF', lineWidth: 4, shadowColor: '#00D1FF', shadowBlur: 10, opacity: 1 }
@@ -53,13 +47,8 @@ export const THEME = {
         layer: LAYERS.SELECTION,
         style: { stroke: '#00D1FF', lineWidth: 4, shadowColor: '#00D1FF', shadowBlur: 10, opacity: 1 }
     },
-    related: {
-        layer: LAYERS.DECORATION,
-        style: { stroke: '#A855F7', lineWidth: 4, lineDash: [5, 5] }
-    },
-    // --- 测试用状态 (同级叠加实验) ---
-    // Layer 均为 50，测试 "后盖前" 的时序逻辑
-    // 关键：必须加 opacity: 1 以防止被全局 dimmed (0.2) 压暗
+
+    // --- 测试用状态 ---
     test_red: {
         layer: 50,
         style: { fill: '#FF0000', stroke: '#880000', lineWidth: 3, opacity: 1 }
@@ -73,66 +62,43 @@ export const THEME = {
         style: { fill: '#0000FF', stroke: '#000088', lineWidth: 3, opacity: 1 }
     },
 
-    hover: {
-        layer: LAYERS.DECORATION - 5,
-        style: { stroke: '#999', cursor: 'pointer' }
-    },
     default: {
         layer: LAYERS.BASE,
         style: {}
     }
 };
 
-// --- 向下兼容导出 (Derived Exports for Compatibility) ---
-
-// 1. 自动生成 PRIORITY 字典 { critical: 90, ... }
+// --- 自动生成 PRIORITY 字典 ---
 export const PRIORITY = Object.keys(THEME).reduce((acc, key) => {
     acc[key] = THEME[key].layer;
     return acc;
 }, {});
 
-// 2. 自动生成全局默认样式字典 { critical: {...}, ... }
-// 这样在 G6Demo 里就不用手写 commonStateStyles 了
+// --- 自动生成全局默认样式字典 ---
 export const GLOBAL_STATE_STYLES = Object.keys(THEME).reduce((acc, key) => {
     acc[key] = THEME[key].style;
     return acc;
 }, {});
 
 // --- 属性混合策略定义 (Blending Strategy) ---
-// 任何未在此表中定义的属性，默认走 "覆盖 (Overwrite)" 逻辑。
-
 export const BLEND_MODES = {
-    // 1. 几何尺寸类 -> 取最大值 (Math.max)
-    // 保证"更显眼"的特征不被"普通"特征掩盖
-    r: (prev, curr) => Math.max(prev, curr),           // 半径
-    width: (prev, curr) => Math.max(prev, curr),       // 宽
-    height: (prev, curr) => Math.max(prev, curr),      // 高
-    lineWidth: (prev, curr) => Math.max(prev, curr),   // 边框粗细
+    // 1. 几何尺寸类 -> 取最大值
+    r: (prev, curr) => Math.max(prev, curr),
+    width: (prev, curr) => Math.max(prev, curr),
+    height: (prev, curr) => Math.max(prev, curr),
+    lineWidth: (prev, curr) => Math.max(prev, curr),
 
-    // 2. 透明度/可见性
-    // "智能混合" (Smart Blend)
-    // 1. 如果当前状态显式要求 1.0 (不透明)，视为"高亮/重置"意图，直接强制变亮 (解决 Spotlight 问题)
-    // 2. 否则，视为"过滤/遮罩"意图，进行乘法叠加 (解决 Overlay 叠加问题)
+    // 2. 透明度 -> 智能混合 (Spotlight vs Overlay)
     opacity: (prev, curr) => curr === 1 ? 1 : prev * curr,
     fillOpacity: (prev, curr) => curr === 1 ? 1 : prev * curr,
     strokeOpacity: (prev, curr) => curr === 1 ? 1 : prev * curr,
 
-    // 3. 阴影/发光效果 -> 累加 (Sum)
-    // 多个状态叠加时，光晕应该更强
+    // 3. 阴影 -> 累加
     shadowBlur: (prev, curr) => prev + curr,
     shadowOffsetX: (prev, curr) => prev + curr,
     shadowOffsetY: (prev, curr) => prev + curr,
 
-    // 4. Transform/Offset -> 累加 (Sum)
-    x: (prev, curr) => prev + curr, // 相对位移（注意：通常不建议用样式改 x/y，除非是相对微调）
+    // 4. 位移 -> 累加
+    x: (prev, curr) => prev + curr,
     y: (prev, curr) => prev + curr,
-
-    // --- 以下属性属于“覆盖型”，不需要写在这里，默认就是覆盖 ---
-    // fill (填充色): 红色 + 蓝色 = ? 很难定义，通常直接取优先级高的。
-    // stroke (边框色)
-    // shadowColor (阴影色)
-    // lineDash (虚线样式)
-    // cursor (鼠标手势)
-    // fontFamily / fontSize (字体)
-    // opacity (透明度) - 现在也归此类
 };

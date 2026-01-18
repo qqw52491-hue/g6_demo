@@ -75,3 +75,65 @@ graph.paint();
 *   `StateManager.js`: 管理状态的增删查改 (CRUD)。
 *   `StyleResolver.js`: 执行具体的计算逻辑 (Sort & Blend)。
 *   `registerNode.js`: 将计算好的样式应用到 G6 图形上。
+
+---
+
+## 5. 开发最佳实践 (Development Workflow)
+
+随着架构演进，我们不再推荐修改 `constants.js` 来定义业务状态。请遵循以下两种标准流程：
+
+### 模式一：规范开发流程 (Registry Pattern)
+**适用场景**：高频使用的稳定状态（如：错误、VIP用户、选中、运行中）。
+**口诀**：先立规矩(Register)，再执行(Activate)。
+
+1.  **定义皮肤 (Register)**
+    *   通常在应用初始化 (`onMounted`) 或独立的 `theme.js` 中。
+    *   利用 `registerState` 提前注入配置，支持“一次定义，到处使用”。
+    ```javascript
+    // 初始化时
+    stateManager.value.registerState('vip_mode', {
+        layer: 50,
+        style: { fill: 'gold', stroke: 'black', lineWidth: 4 }
+    });
+    ```
+
+2.  **触发状态 (Activate)**
+    *   后续业务中只需引用状态名，无需关心具体样式。
+    ```javascript
+    stateManager.value.addReason(nodeId, 'vip_mode', 'backend_api');
+    ```
+
+3.  **状态解除 (Deactivate)**
+    ```javascript
+    stateManager.value.removeReason(nodeId, 'vip_mode', 'backend_api');
+    ```
+
+### 模式二：快速内联流程 (Inline Dynamic Pattern)
+**适用场景**：一次性特效、临时引导、Debug 高亮。
+**口诀**：不用打招呼，直接干。
+
+1.  **直接应用 (Inline Apply)**
+    *   在添加状态时，直接传入临时样式配置对象 `{ layer, style }`。
+    ```javascript
+    stateManager.value.addReason(nodeId, 'temp_highlight', 'tutorial_step_1', {
+        layer: 99, // 甚至可以临时覆盖 Error
+        style: { fill: 'pink', animate: true, opacity: 1 } 
+    });
+    ```
+
+2.  **自动清理**
+    *   移除时同上，只需移除理由，样式会自动回退。
+    ```javascript
+    stateManager.value.removeReason(nodeId, 'temp_highlight', 'tutorial_step_1');
+    ```
+
+### 🎈 特性：同级堆叠 (Temporal Stacking)
+当两个状态配置了 **相同的 Layer** (优先级) 时，系统会自动启用 **“时序堆叠”** 逻辑：
+1.  **后加覆盖先加**：先加红，再加蓝 -> 显示蓝。
+2.  **撤销自动回退**：移除蓝 -> 自动变回红。
+3.  **乱序撤销**：移除中间的绿 -> 视觉不变（依然是蓝），但底层队列已更新。
+
+这使得你无需手写 Stack 逻辑即可实现复杂的覆盖回退效果。
+
+---
+**总结**：`constants.js` 只负责物理法则 (Layer/BlendMode)。业务样式请全部使用 **StateManager** 动态管理！
