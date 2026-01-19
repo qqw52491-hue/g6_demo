@@ -25,7 +25,7 @@ export const THEME = {
         layer: LAYERS.TOP_MOST,
         style: { opacity: 0, stroke: 'transparent' }
     },
-    // critical: 已移除，由业务层动态定义
+    // critical: 已移除，由业务层动态定义1
 
     highlight: {
         layer: LAYERS.HIGHLIGHT,
