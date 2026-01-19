@@ -102,3 +102,8 @@ export const BLEND_MODES = {
     x: (prev, curr) => prev + curr,
     y: (prev, curr) => prev + curr,
 };
+
+// --- 动态定义的样式存储 (The Dynamic Registry) ---
+// 为了让 StyleResolver 能直接访问动态样式，我们把它放在全局单例里
+// StateManager 负责写，StyleResolver 负责读
+export const DYNAMIC_STATE_STYLES = new Map();

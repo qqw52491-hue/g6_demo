@@ -1,3 +1,5 @@
+import { DYNAMIC_STATE_STYLES } from './constants';
+
 export class StateManager {
     constructor() {
         // 数据结构: nodeId -> { stateName -> Set<reasonId> }
@@ -5,11 +7,6 @@ export class StateManager {
         // 全局理由: stateName -> Set<reasonId>
         // 这些状态会自动应用到所有节点上
         this.globalReasons = new Map();
-
-        // 新增：动态样式定义存储
-        // Map<stateName, { layer, style }>
-        // 允许在 addReason 时携带优先级和样式，无需在 constants.js 预定义
-        this.dynamicStateDefinitions = new Map();
     }
 
     /**
@@ -18,7 +15,7 @@ export class StateManager {
      */
     registerState(state, config) {
         if (state && config) {
-            this.dynamicStateDefinitions.set(state, config);
+            DYNAMIC_STATE_STYLES.set(state, config);
         }
     }
 
@@ -42,21 +39,33 @@ export class StateManager {
 
         // 新增：动态注册状态定义
         if (config) {
-            this.dynamicStateDefinitions.set(state, config);
+            DYNAMIC_STATE_STYLES.set(state, config);
         }
     }
 
     /**
-     * 获取所有动态注册的状态定义。
-     * 返回格式: { stateName: { layer, style }, ... }
-     * 它可以直接合并到 GLOBAL_STATE_STYLES 中。
+     * 核心应用方法：将计算出的状态应用到图上
+     * 这个方法现在只负责更新 activeStates，样式计算完全交给 StyleResolver
      */
-    getDynamicDefinitions() {
-        const result = {};
-        for (const [key, val] of this.dynamicStateDefinitions.entries()) {
-            result[key] = val;
-        }
-        return result;
+    applyStatesToGraph(graph, nodeIds) {
+        if (!graph || !nodeIds) return;
+
+        graph.setAutoPaint(false);
+
+        nodeIds.forEach(id => {
+            const item = graph.findById(id);
+            if (item) {
+                const activeStates = this.getActiveStates(id);
+                // 此时只需要更新 activeStates
+                // 具体的样式计算，会在 G6 内部渲染时，由 StyleResolver 自动去查 constants.DYNAMIC_STATE_STYLES
+                graph.updateItem(item, {
+                    activeStates: activeStates,
+                });
+            }
+        });
+
+        graph.paint();
+        graph.setAutoPaint(true);
     }
 
     /**

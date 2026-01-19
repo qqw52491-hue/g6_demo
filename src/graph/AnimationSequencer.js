@@ -11,31 +11,53 @@ export class AnimationSequencer {
      * @param {string[]} edgeIds - 路径上所有边的 ID 列表
      */
     async playPathTrace(pathNodeIds, edgeIds) {
-        // 1. 生成唯一的原因 ID，用于后续撤销
+        // 1. 生成唯一的原因 ID
         const reasonId = `trace_${Date.now()}`;
 
-        // 2. 只有起点和终点是特殊的（Star/End），中间是普通的路径点(Path)
+        // 2. 只有起点和终点是特殊的，中间是普通的路径点
         const startId = pathNodeIds[0];
         const endId = pathNodeIds[pathNodeIds.length - 1];
         const middleIds = pathNodeIds.slice(1, pathNodeIds.length - 1);
 
+        // 3. 控制对象 (用于中断动画)
+        // 我们用一个对象而不是布尔值，利用引用的特性
+        const control = { active: true };
+
+        // 4. 定义撤销逻辑 (提前定义，为了能放入 timeline)
+        const undo = () => {
+            // A. 先停止后续动画
+            control.active = false;
+
+            // B. 清理己经加上去的样式
+            const allItems = [...new Set([...pathNodeIds, ...(edgeIds || [])])];
+            allItems.forEach(id => {
+                if (!id) return;
+                this.stateManager.removeReason(id, 'highlight_source', reasonId);
+                this.stateManager.removeReason(id, 'highlight_target', reasonId);
+                this.stateManager.removeReason(id, 'path_active', reasonId);
+            });
+            this.refreshGraph(allItems);
+        };
+
+        // 5. 立即推入撤销栈
+        // 这样即使动画还在跑，用户点了撤销，也能找到这个 undo 函数并执行中断
+        this.timeline.push({ id: reasonId, undo });
+
         // ----------------------------
         // 阶段 A: 即时响应 (变状态)
         // ----------------------------
-
-        // 起点：设为 HighLight (Source)
         this.stateManager.addReason(startId, 'highlight_source', reasonId);
         this.refreshGraph([startId]);
 
         // ----------------------------
-        // 阶段 B: 流光动画 (逐步点亮边 -> 节点 -> 边)
+        // 阶段 B: 流光动画
         // ----------------------------
-
         const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-        // 1. 点亮第一条边（如果有）
+        // 1. 点亮第一条边
         if (edgeIds && edgeIds[0]) {
             await delay(300);
+            if (!control.active) return; // 检查中断
             this.stateManager.addReason(edgeIds[0], 'path_active', reasonId);
             this.refreshGraph([edgeIds[0]]);
         }
@@ -45,13 +67,14 @@ export class AnimationSequencer {
             const nodeId = middleIds[i];
 
             await delay(300);
+            if (!control.active) return; // 检查中断
             this.stateManager.addReason(nodeId, 'path_active', reasonId);
             this.refreshGraph([nodeId]);
 
-            // 点亮下一条边
             const nextEdgeIndex = i + 1;
             if (edgeIds && edgeIds[nextEdgeIndex]) {
                 await delay(300);
+                if (!control.active) return; // 检查中断
                 this.stateManager.addReason(edgeIds[nextEdgeIndex], 'path_active', reasonId);
                 this.refreshGraph([edgeIds[nextEdgeIndex]]);
             }
@@ -59,85 +82,21 @@ export class AnimationSequencer {
 
         // 3. 最后点亮终点
         await delay(300);
+        if (!control.active) return; // 检查中断
         this.stateManager.addReason(endId, 'highlight_target', reasonId);
         this.refreshGraph([endId]);
-
-        // ----------------------------
-        // 阶段 C: 记录撤销逻辑 (Undo Logic)
-        // ----------------------------
-        const undo = () => {
-            // 一键撤销：只需要移除这个 reasonId 下的所有状态
-            // 不需要管当时是第几个节点亮了，只要 reasonId 一样，全部干掉
-
-            // 这里需要 StateManager 支持批量移除，或者我们手动遍历
-            // 包括所有节点和边
-            const allItems = [...new Set([...pathNodeIds, ...(edgeIds || [])])];
-
-            allItems.forEach(id => {
-                if (!id) return;
-                this.stateManager.removeReason(id, 'highlight_source', reasonId);
-                this.stateManager.removeReason(id, 'highlight_target', reasonId);
-                this.stateManager.removeReason(id, 'path_active', reasonId);
-            });
-
-            this.refreshGraph(allItems);
-        };
-
-        this.timeline.push({ id: reasonId, undo });
     }
 
     /**
      * 辅助刷新：只更新脏节点
      */
+    /**
+     * 辅助刷新：只更新脏节点
+     * 现在的逻辑非常干净：只通知 StateManager 应用状态，样式计算由 G6 内部的 StyleResolver 自动完成
+     */
     refreshGraph(nodeIds) {
         if (!this.graph || !nodeIds) return;
-
-        this.graph.setAutoPaint(false);
-
-        // 1. 获取动态定义的状态 (运行时添加的 layer/style)
-        const dynamicStyles = this.stateManager.getDynamicDefinitions();
-
-        // 2. 分离动态样式与优先级 (Optimization: 循环外只需执行一次)
-        // StateManager 返回的是 { layer, style } 结构，我们需要拆分
-        const dynamicIds = Object.keys(dynamicStyles);
-        const dynamicStateStyles = {};
-        const dynamicStatePriorities = {};
-
-        dynamicIds.forEach(state => {
-            const def = dynamicStyles[state];
-            if (def) {
-                if (def.style) dynamicStateStyles[state] = def.style;
-                if (def.layer !== undefined) dynamicStatePriorities[state] = def.layer;
-            }
-        });
-
-        nodeIds.forEach(id => {
-            const item = this.graph.findById(id);
-            if (item) {
-                const activeStates = this.stateManager.getActiveStates(id);
-                const model = item.getModel();
-
-                // 3. 合并样式表和优先级表
-                const mergedStateStyles = {
-                    ...model.stateStyles,
-                    ...dynamicStateStyles
-                };
-
-                const mergedStatePriorities = {
-                    ...model.statePriorities,
-                    ...dynamicStatePriorities
-                };
-
-                this.graph.updateItem(item, {
-                    activeStates: activeStates,
-                    stateStyles: mergedStateStyles,     // 纯样式对象
-                    statePriorities: mergedStatePriorities // 纯优先级对象
-                });
-            }
-        });
-
-        this.graph.paint();
-        this.graph.setAutoPaint(true);
+        this.stateManager.applyStatesToGraph(this.graph, nodeIds);
     }
 
     /**

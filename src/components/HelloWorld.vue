@@ -241,7 +241,30 @@ const refreshAll = () => {
     ];
 
     console.log(allItems);
+    console.log(allItems);
     sequencer.value.refreshGraph(allItems);
+};
+
+const addNewNode = () => {
+    if (!graphInstance.value) return;
+
+    const id = `new-node-${Date.now()}`;
+    const model = {
+        id,
+        label: 'New',
+        x: Math.random() * 800,
+        y: Math.random() * 500,
+        stateStyles: GLOBAL_STATE_STYLES, // Important!
+    };
+
+    graphInstance.value.addItem('node', model);
+
+    // Check if we have global reasons (like dimmed) active
+    // If so, we must sync this new node immediately
+    // sequencer.refreshGraph is smart enough to check global states
+    sequencer.value.refreshGraph([id]);
+
+    console.log(`[Vue] Added ${id}`);
 };
 
 </script>
@@ -257,6 +280,8 @@ const refreshAll = () => {
             <button @click="cancelTrace">↩️ 清除轨迹 (Undo)</button>
             <div class="divider"></div>
             <button @click="demoError">🚨 错误覆盖 (Error)</button>
+            <div class="divider"></div>
+            <button @click="addNewNode">➕ 新增节点 (Test Global)</button>
         </div>
 
         <!-- 新增：同级叠加测试区 -->
