@@ -97,29 +97,58 @@ export class AnimationSequencer {
         // 1. 获取动态定义的状态 (运行时添加的 layer/style)
         const dynamicStyles = this.stateManager.getDynamicDefinitions();
 
+        // 2. 分离动态样式与优先级 (Optimization: 循环外只需执行一次)
+        // StateManager 返回的是 { layer, style } 结构，我们需要拆分
+        const dynamicIds = Object.keys(dynamicStyles);
+        const dynamicStateStyles = {};
+        const dynamicStatePriorities = {};
+
+        dynamicIds.forEach(state => {
+            const def = dynamicStyles[state];
+            if (def) {
+                if (def.style) dynamicStateStyles[state] = def.style;
+                if (def.layer !== undefined) dynamicStatePriorities[state] = def.layer;
+            }
+        });
+
         nodeIds.forEach(id => {
             const item = this.graph.findById(id);
             if (item) {
                 const activeStates = this.stateManager.getActiveStates(id);
                 const model = item.getModel();
 
-                // 2. 合并样式表：全局/原有样式 + 动态样式
-                // 注意：这里我们做浅合并。如果 dynamicStyles 很大，可能需要优化。
-                // 但通常动态样式不会太多。
+                // 3. 合并样式表和优先级表
                 const mergedStateStyles = {
                     ...model.stateStyles,
-                    ...dynamicStyles
+                    ...dynamicStateStyles
+                };
+
+                const mergedStatePriorities = {
+                    ...model.statePriorities,
+                    ...dynamicStatePriorities
                 };
 
                 this.graph.updateItem(item, {
                     activeStates: activeStates,
-                    stateStyles: mergedStateStyles // <--- 注入合并后的样式表
+                    stateStyles: mergedStateStyles,     // 纯样式对象
+                    statePriorities: mergedStatePriorities // 纯优先级对象
                 });
             }
         });
 
         this.graph.paint();
         this.graph.setAutoPaint(true);
+    }
+
+    /**
+     * 便捷方法：刷新全图
+     * 当涉及到 Global Reason 变更时，必须调用此方法
+     */
+    refreshAll() {
+        if (!this.graph) return;
+        const nodes = this.graph.getNodes().map(n => n.getID());
+        const edges = this.graph.getEdges().map(e => e.getID());
+        this.refreshGraph([...nodes, ...edges]);
     }
 
     /**

@@ -10,20 +10,48 @@ function applyVisuals(model, group) {
     if (!model || !group) return;
 
     // 1. 找到关键图形 (KeyShape)
-    const keyShape = group.find(element => element.get('name') === 'key-shape');
+    let keyShape = group.find(element => element.get('name') === 'key-shape');
+
+    // 【关键修复】如果是继承的 Edge，可能没有显式命名的 key-shape
+    // G6 内置 Edge 的主图形通常叫 'edge-shape'，或者我们直接取第一个子图形作为回退
+    if (!keyShape) {
+        keyShape = group.find(element => element.get('name') === 'edge-shape');
+    }
+    // 最后的保底：取第一个 child (通常这就够了)
+    if (!keyShape && group.getCount() > 0) {
+        keyShape = group.getChildByIndex(0);
+    }
+
     if (!keyShape) {
         // console.warn('registerNode: key-shape not found for', model.id);
         return;
     }
 
     // 2. 提取样式配置
-    const defaultStyle = model.defaultStyle || { fill: '#C6E5FF', stroke: '#5B8FF9', lineWidth: 1 }; // 恢复默认蓝色
+    // 【关键修复】必须包含所有可能产生副作用的属性默认值 (Reset Base)
+    // 否则当状态移除后，opacity/shadow 等属性会残留
+    const BASE_STYLE = {
+        fill: '#C6E5FF',
+        stroke: '#5B8FF9',
+        lineWidth: 1,
+        opacity: 1,           // 必须显式重置
+        shadowBlur: 0,        // 必须显式重置
+        shadowColor: undefined // 清空阴影色
+    };
+
+    // 如果 model 里没有 savedDefaultStyle，就合并一个
+    const userDefault = model.defaultStyle || {};
+    //结合之前得合成真正得自定义样式
+    const defaultStyle = { ...BASE_STYLE, ...userDefault };
+
+    //这个是状态样式
     const stateStyles = model.stateStyles || {};
+    //这个是活跃得样式字符串数组其实是
     const activeStates = model.activeStates || [];
 
     // 3. 计算最终样式
     // resolveStyle 会处理优先级、混合模式等复杂逻辑
-    const finalStyle = resolveStyle(defaultStyle, stateStyles, activeStates);
+    const finalStyle = resolveStyle(defaultStyle, stateStyles, activeStates, model.statePriorities);
 
     // 4. 立即生效 (Attributes Update)
     // 使用 attr 而非 animate，以确保高性能和位置同步

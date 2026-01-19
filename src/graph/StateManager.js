@@ -108,7 +108,7 @@ export class StateManager {
      */
     getActiveStates(nodeId) {
         const activeStates = new Set();
-
+        console.log('getActiveStates', nodeId);
         // 1. 收集全局状态
         for (const [state, reasons] of this.globalReasons.entries()) {
             if (reasons.size > 0) activeStates.add(state);
