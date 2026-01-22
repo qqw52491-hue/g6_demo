@@ -148,3 +148,7 @@ export class StateManager {
         this.globalReasons.clear();
     }
 }
+
+// --- Singleton Export ---
+// 允许全局直接访问（打破 G6 闭环的关键）
+export const globalStateManager = new StateManager();

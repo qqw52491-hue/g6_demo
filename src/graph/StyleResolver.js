@@ -10,7 +10,14 @@ import { PRIORITY, BLEND_MODES, DYNAMIC_STATE_STYLES } from './constants';
  */
 export function resolveStyle(defaultStyle, stateStyles, activeStates, priorityMap) {
     // 按优先级排序状态：低 -> 高
-    // 这确保高优先级的样式会覆盖低优先级的样式（除非定义了混合模式）
+    // 这确保高优先级的样式会覆盖低优先级的样式
+    // 叠加逻辑: 
+    // 1. 初始化: finalStyle = 深拷贝(defaultStyle)
+    // 2. 排序 activeStates (根据 PRIORITY Map)
+    // 3. 遍历 Loop:
+    //    - 获取 State Style
+    //    - 对比每个属性: finalStyle[key] vs StateStyle[key]
+    //    - 混合: 如果有 BLEND_MODES (如 Math.max)，则混合; 否则直接覆盖.
     // 4. 支持动态优先级 (Dynamic Priorities)
     // 优先使用传入的 priorityMap (Model上的)，其次使用全局注册表(Dynamic Registry)，最后是全局常量
     const getPriority = (state) => {

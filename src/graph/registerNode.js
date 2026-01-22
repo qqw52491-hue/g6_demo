@@ -3,70 +3,127 @@ import { resolveStyle } from './StyleResolver';
 
 /**
  * 核心样式应用函数
- * @param {Object} model - 节点/边的数据模型 (全量数据)
+ * @param {Object} model - 节点/边的数据模型
  * @param {Object} group - 图形分组 Group
  */
 function applyVisuals(model, group) {
     if (!model || !group) return;
 
-    // 1. 找到关键图形 (KeyShape)
-    let keyShape = group.find(element => element.get('name') === 'key-shape');
-
-    // 【关键修复】如果是继承的 Edge，可能没有显式命名的 key-shape
-    // G6 内置 Edge 的主图形通常叫 'edge-shape'，或者我们直接取第一个子图形作为回退
-    if (!keyShape) {
-        keyShape = group.find(element => element.get('name') === 'edge-shape');
-    }
-    // 最后的保底：取第一个 child (通常这就够了)
-    if (!keyShape && group.getCount() > 0) {
-        keyShape = group.getChildByIndex(0);
-    }
-
-    if (!keyShape) {
-        // console.warn('registerNode: key-shape not found for', model.id);
-        return;
-    }
-
-    // 2. 提取样式配置
-    // 【关键修复】必须包含所有可能产生副作用的属性默认值 (Reset Base)
-    // 否则当状态移除后，opacity/shadow 等属性会残留
-    const BASE_STYLE = {
+    // --- 1. 统一基准样式 (Global Base) ---
+    // 这是所有节点的“出厂设置”，绝对干净，防止之前的样式残留
+    const GLOBAL_DEFAULT_STYLE = {
         fill: '#C6E5FF',
         stroke: '#5B8FF9',
         lineWidth: 1,
-        opacity: 1,           // 必须显式重置
-        shadowBlur: 0,        // 必须显式重置
-        shadowColor: undefined // 清空阴影色
+        opacity: 1,
+        shadowBlur: 0,
+        shadowColor: undefined,
+        cursor: 'pointer'
     };
 
-    // 如果 model 里没有 savedDefaultStyle，就合并一个
-    const userDefault = model.defaultStyle || {};
-    //结合之前得合成真正得自定义样式
-    const defaultStyle = { ...BASE_STYLE, ...userDefault };
+    // 允许节点自定义颜色
+    const userOverrides = {};
+    if (model.style && model.style.fill) userOverrides.fill = model.style.fill;
 
-    //这个是状态样式
-    const stateStyles = model.stateStyles || {};
-    //这个是活跃得样式字符串数组其实是
+    const defaultStyle = { ...GLOBAL_DEFAULT_STYLE, ...userOverrides };
+
+    // --- 2. 恢复从 Model 获取状态 (Revert to Model Dependancy) ---
+    // 为了保证动画生效，必须依赖 model.activeStates，
+    // 因为 AnimationSequencer 是通过 updateItem 把状态推送到 model 里的。
     const activeStates = model.activeStates || [];
 
-    // 3. 计算最终样式
-    // resolveStyle 会处理优先级、混合模式等复杂逻辑
-    const finalStyle = resolveStyle(defaultStyle, stateStyles, activeStates, model.statePriorities);
+    // 状态样式定义
+    const stateStyles = model.stateStyles || {};
 
-    // 4. 立即生效 (Attributes Update)
-    // 使用 attr 而非 animate，以确保高性能和位置同步
-    keyShape.attr(finalStyle);
 
-    // 5. 特殊处理：如果有 Label，也要同步更新样式 (可选)
-    const labelShape = group.find(element => element.get('name') === 'center-label');
-    if (labelShape && finalStyle.labelCfg && finalStyle.labelCfg.style) {
-        labelShape.attr(finalStyle.labelCfg.style);
+    // --- 3. 找到 KeyShape ---
+    let keyShape = null;
+    const isValidKeyShape = (shape) => {
+        if (!shape) return false;
+        const type = shape.get('type');
+        return type !== 'text' && type !== 'dom' && type !== 'gui';
+    };
+
+    // 策略 A: 精确按名称
+    const namedKey = group.find(element => element.get('name') === 'key-shape');
+    if (isValidKeyShape(namedKey)) keyShape = namedKey;
+    else {
+        const namedEdge = group.find(element => element.get('name') === 'edge-shape');
+        if (isValidKeyShape(namedEdge)) keyShape = namedEdge;
     }
 
-    // Debug Log: Uncomment to verify updates
-    // if (activeStates.length > 0) {
-    //    console.log(`[Update] ${model.id} states:`, activeStates, 'style:', finalStyle);
-    // }
+    // 策略 B: 泛化查找
+    if (!keyShape) {
+        const children = group.getChildren();
+        if (children && children.length > 0) {
+            for (let i = 0; i < children.length; i++) {
+                const child = children[i];
+                if (isValidKeyShape(child)) {
+                    keyShape = child;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (!keyShape) return;
+
+
+    // --- 4. 计算最终样式 (Stacking) ---
+    const finalStyle = resolveStyle(defaultStyle, stateStyles, activeStates, model.statePriorities);
+
+    // --- Debug Log for Node-0 ---
+    if (model.id === '0' || model.id === 'node-0') { // 假设ID是1或node-1，您可以根据实际修改
+        console.group(`[Render Debug] ${model.id}`);
+        console.log('1. Base Style:', JSON.stringify(defaultStyle));
+        console.log('2. Active States:', activeStates);
+        console.log('3. Final Style (lineWidth):', finalStyle.lineWidth);
+        console.log('4. Final Style (Full):', finalStyle);
+        console.groupEnd();
+    }
+
+    // --- 5. 应用样式到 KeyShape ---
+    keyShape.attr(finalStyle);
+
+
+    // --- 6. Label 强制重置 (The Clean-up) ---
+    // 【终极方案】使用透明色强制清除描边
+    const labelShape = group.find(element => element.get('name') === 'center-label');
+    if (labelShape) {
+        const BASE_LABEL_STYLE = {
+            fill: '#000',
+            stroke: 'rgba(0,0,0,0)', // 终极必杀：用透明色代替 null
+            lineWidth: 0,            // 必须强制归零
+
+            // 【关键补充】防止阴影残留导致的“伪粗体”
+            shadowBlur: 0,
+            shadowColor: null,
+            shadowOffsetX: 0,
+            shadowOffsetY: 0,
+
+            fontSize: 12,
+            fontWeight: 'normal',
+            opacity: 1,
+            cursor: 'pointer'
+        };
+
+        const userLabelStyle = model.labelCfg ? model.labelCfg.style : {};
+        const stateLabelStyle = (finalStyle.labelCfg && finalStyle.labelCfg.style) ? finalStyle.labelCfg.style : {};
+
+        const finalLabelStyle = {
+            ...BASE_LABEL_STYLE,
+            ...userLabelStyle,
+            ...stateLabelStyle
+        };
+
+        // --- Debug Log for Node-0 Label ---
+        if (model.id === '0' || model.id === 'node-0') {
+            // 打印全量属性，不进行筛选，彻底对比
+            console.log(`[Label Debug Full] ${model.id} Final Style:`, JSON.parse(JSON.stringify(finalLabelStyle)));
+        }
+
+        labelShape.attr(finalLabelStyle);
+    }
 }
 
 export function registerCustomNode() {

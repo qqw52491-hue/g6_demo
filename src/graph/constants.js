@@ -88,22 +88,30 @@ export const BLEND_MODES = {
     height: (prev, curr) => Math.max(prev, curr),
     lineWidth: (prev, curr) => Math.max(prev, curr),
 
-    // 2. 透明度 -> 智能混合 (Spotlight vs Overlay)
+    // 2. 透明度 -> 智能
     opacity: (prev, curr) => curr === 1 ? 1 : prev * curr,
     fillOpacity: (prev, curr) => curr === 1 ? 1 : prev * curr,
     strokeOpacity: (prev, curr) => curr === 1 ? 1 : prev * curr,
 
     // 3. 阴影 -> 累加
-    shadowBlur: (prev, curr) => prev + curr,
-    shadowOffsetX: (prev, curr) => prev + curr,
-    shadowOffsetY: (prev, curr) => prev + curr,
+    shadowBlur: (prev, curr) => (prev || 0) + (curr || 0),
+    shadowOffsetX: (prev, curr) => (prev || 0) + (curr || 0),
+    shadowOffsetY: (prev, curr) => (prev || 0) + (curr || 0),
 
     // 4. 位移 -> 累加
-    x: (prev, curr) => prev + curr,
-    y: (prev, curr) => prev + curr,
+    x: (prev, curr) => (prev || 0) + (curr || 0),
+    y: (prev, curr) => (prev || 0) + (curr || 0),
 };
 
 // --- 动态定义的样式存储 (The Dynamic Registry) ---
 // 为了让 StyleResolver 能直接访问动态样式，我们把它放在全局单例里
 // StateManager 负责写，StyleResolver 负责读
 export const DYNAMIC_STATE_STYLES = new Map();
+
+// --- 安全混合辅助函数 ---
+// 防止 Math.max(undefined, 4) 这种诡异情况，确保数值比较总是有效的
+const safeMax = (prev, curr) => Math.max(typeof prev === 'number' ? prev : 0, typeof curr === 'number' ? curr : 0);
+BLEND_MODES.r = safeMax;
+BLEND_MODES.width = safeMax;
+BLEND_MODES.height = safeMax;
+BLEND_MODES.lineWidth = safeMax;
