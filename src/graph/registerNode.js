@@ -173,11 +173,32 @@ export function registerCustomNode() {
 
         // Hook: 更新完成后立即重算“状态样式”
         // 注意：位置更新(x,y) 已经由父类完成
+        // Hook: 更新完成后立即重算“状态样式”
+        // 注意：位置更新(x,y) 已经由父类完成
         afterUpdate(cfg, item) {
             const group = item.getContainer();
             // 在 update 阶段，必须从 item.getModel() 拿全量数据，cfg 可能是增量
             const model = item.getModel();
             applyVisuals(model, group);
+        },
+
+        // 【关键修复】重写 update 方法，防止 fallback 到 single-node 时产生"幽灵 Label"
+        update(cfg, item) {
+            const group = item.getContainer();
+            const model = item.getModel(); // 获取全量数据
+
+            // 1. 更新样式 (这是核心)
+            applyVisuals(model, group);
+
+            // 2. 更新 Label 文字 (如果文字变了)
+            if (cfg.label !== undefined) {
+                const labelShape = group.find(element => element.get('name') === 'center-label');
+                if (labelShape) {
+                    labelShape.attr('text', cfg.label);
+                }
+            }
+
+            return true; // 告诉 G6 我们已经处理完更新了
         }
     }, 'single-node'); // 继承 single-node
 
